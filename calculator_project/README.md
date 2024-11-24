@@ -21,24 +21,6 @@ This is a simple calculator program built in Python that allows users to perform
 
 
   
-Example Output:
-What is the first number?: 5
-+ 
-- 
-* 
-/ 
-Pick an operation: +
-What is the next number?: 3
-5.0 + 3.0 = 8.0
-Type 'y' to continue calculating with 8.0, or type 'n' to start a new calculation: y
-+ 
-- 
-* 
-/ 
-Pick an operation: *
-What is the next number?: 2
-8.0 * 2.0 = 16.0
-Type 'y' to continue calculating with 16.0, or type 'n' to start a new calculation: n
 
 
 
