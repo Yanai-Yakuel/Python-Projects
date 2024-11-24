@@ -10,7 +10,3 @@ A collection of Python projects I've created while learning and exploring progra
 - **Password Generator**: A tool for generating secure passwords.
 - **Sentence Encryption**: A program for encrypting and decrypting sentences.
 
-## How to Use
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Yanai-Yakuel/pycharm_projects.git
