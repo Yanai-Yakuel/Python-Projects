@@ -5,6 +5,7 @@ def add(n1, n2):
 def subtract(n1, n2):
     return n1 - n2
 
+
 def multiply(n1, n2):
     return n1 * n2
 
@@ -36,11 +37,10 @@ def calculator():
         choice = input(f"Type 'y' to continue calculating with {answer}, or type 'n' to start a new calculation: ")
 
         if choice == "y":
-            num1 = answer
+            num1 = answer  # Continue the calculation with the result of the previous calculation
         else:
-            should_accumulate = False
-            print("\n" * 40)
-            calculator()
+            should_accumulate = False  # Exit the loop and end the calculation session
+            print("\n" * 40)  # Clear the screen
 
-
+# Start the calculator
 calculator()
