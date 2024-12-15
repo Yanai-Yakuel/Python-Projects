@@ -14,7 +14,13 @@ A simple Python-based calculator program that can perform basic arithmetic opera
 
 - **File**: [calculator_project.py](calculator_project.py)
 
+### 3. **Coffee Machine**
+This project simulates a coffee machine where users can order different types of coffee (espresso, latte, cappuccino), check if there are enough resources, insert coins to pay, and get their coffee. It also includes an admin mode to restock resources and view total profit.
+
+- **File**: [coffee_machine.py](coffee_machine.py)
+
 ---
 
 *Each project in this folder is implemented as a standalone Python file that serves a specific utility function.*
+
 
