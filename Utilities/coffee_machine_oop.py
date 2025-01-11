@@ -1,111 +1,150 @@
-class CoffeeMachine:
-    def __init__(self):
-        # Define the menu with drink types, ingredients, and prices
-        self.menu = {
-            "espresso": {
-                "ingredients": {
-                    "water": 50,  # 50 ml of water
-                    "coffee": 18,  # 18 grams of coffee
-                },
-                "cost": 1.5,  # Price of espresso
-            },
-            "latte": {
-                "ingredients": {
-                    "water": 200,  # 200 ml of water
-                    "milk": 150,   # 150 ml of milk
-                    "coffee": 24,  # 24 grams of coffee
-                },
-                "cost": 2.5,  # Price of latte
-            },
-            "cappuccino": {
-                "ingredients": {
-                    "water": 250,  # 250 ml of water
-                    "milk": 100,   # 100 ml of milk
-                    "coffee": 24,  # 24 grams of coffee
-                },
-                "cost": 3.0,  # Price of cappuccino
-            }
-        }
+MENU = {
+    "espresso": {
+        "ingredients": {
+            "water": 50,
+            "coffee": 18,
+        },
+        "cost": 1.5,
+    },
+    "latte": {
+        "ingredients": {
+            "water": 200,
+            "milk": 150,
+            "coffee": 24,
+        },
+        "cost": 2.5,
+    },
+    "cappuccino": {
+        "ingredients": {
+            "water": 250,
+            "milk": 100,
+            "coffee": 24,
+        },
+        "cost": 3.0,
+    }
+}
 
-        # Define the available resources (inventory)
-        self.resources = {
-            "water": 300,  # 300 ml of water in stock
-            "milk": 200,   # 200 ml of milk in stock
-            "coffee": 100, # 100 grams of coffee in stock
-        }
+resources = {
+    "water": 300,
+    "milk": 200,
+    "coffee": 100,
+}
+profit = 0
 
-        self.profit = 0  # Variable to store accumulated profit
-        self.admin_password = "admin123"  # Admin password for accessing admin mode
+ADMIN_PASSWORD = "admin"  # הסיסמה למצב אדמין
+ADMIN_MODE = False
 
-    def is_resource_sufficient(self, ingredients):
-        for item in ingredients:
-            if ingredients[item] > self.resources[item]:
-                print(f"Sorry, there is not enough {item}.")
-                return False
-        return True
-
-    def coin_counter(self):
-        print("Insert coins please.")
-        money = int(input("How many dollars? ")) * 1
-        money += int(input("How many quarters? ")) * 0.25
-        money += int(input("How many dimes? ")) * 0.10
-        return money
-
-    def is_transaction_successful(self, received, cost):
-        if received >= cost:
-            change = round(received - cost, 2)
-            print(f"Here is ${change} in change.")
-            self.profit += cost
-            return True
-        else:
-            print("Sorry, not enough money. Money refunded.")
+def is_resource_sufficient(ingredients, choice):
+    """Checks if there are enough resources to make a drink."""
+    for item in ingredients:
+        if ingredients[item] > resources[item]:
+            print(f"Sorry there is not enough {item} to make {choice}")
             return False
+    return True
 
-    def make_coffee(self, drink_name, order_ingredients):
-        for item in order_ingredients:
-            self.resources[item] -= order_ingredients[item]
-        print(f"Here is your {drink_name}. Enjoy!")
+def get_coin_input(coin_type):
+   while True:
+        try:
+          return int(input(f"How many {coin_type}? "))
+          break
+        except ValueError:
+            print("Invalid input. Please enter a number")
 
-    def admin_mode(self):
-        print("Entering admin mode...")
-        print(f"Current resources: {self.resources}")
-        print(f"Total profit: ${self.profit}")
-        restock = input("Would you like to restock resources? (yes/no): ").lower()
-        if restock == "yes":
-            self.resources["water"] += int(input("Add water: "))
-            self.resources["milk"] += int(input("Add milk: "))
-            self.resources["coffee"] += int(input("Add coffee: "))
-            print("Resources updated successfully.")
+def coin_counter():
+    """Prompts user for coin input and returns the total money."""
+    print("Insert coins please ")
+    money = get_coin_input("doller") * 1
+    money += get_coin_input("quarters") * 0.25
+    money += get_coin_input("dimes") * 0.10
+    money += get_coin_input("nickles") * 0.05
+    return money
 
+def is_transaction_successful(received, cost):
+    """Checks if the transaction is successful and updates profit."""
+    if received >= cost:
+        change = round(received - cost, 2)
+        print(f"Here is ${change} in change. ")
+        global profit
+        profit += cost
+        return True
+    else:
+        print("Sorry not enough money. Money refunded.")
+        return False
 
-def main():
-    coffee_machine = CoffeeMachine()  # Create an instance of CoffeeMachine
-    is_on = True
+def make_coffee(drink_name, order_ingredients):
+    """Makes the coffee, subtracting resources and printing a confirmation."""
+    for item in order_ingredients:
+        resources[item] -= order_ingredients[item]
+    print(f"Here is your {drink_name}. Enjoy!")
 
-    while is_on:
-        choice = input("What would you like? (espresso/latte/cappuccino/admin/off): ")
+def enter_admin_mode():
+    """Tries to enter admin mode, and sets the ADMIN_MODE to true if password is correct."""
+    global ADMIN_MODE
+    password = input("Enter admin password: ")
+    if password == ADMIN_PASSWORD:
+        print("Admin mode activated")
+        ADMIN_MODE = True
+        return True
+    else:
+        print("Incorrect password.")
+        return False
+def exit_admin_mode():
+    """Exit admin mode by setting the ADMIN_MODE to false"""
+    global ADMIN_MODE
+    ADMIN_MODE = False
+    print("Admin mode deactivated.")
 
-        if choice == "off":
-            is_on = False
-            print("Turning off. Goodbye!")
-            break
+def admin_report():
+      while True:
+        report_type = input("What report do you want? (report/profit/exit): ").lower()
+        if report_type == "report":
+             print(f"Water: {resources['water']}ml")
+             print(f"Milk: {resources['milk']}ml")
+             print(f"Coffee: {resources['coffee']}g")
+             print(f"Profit: ${profit}")
+        elif report_type == "profit":
+             print(f"Profit: ${profit}")
+        elif report_type == "exit":
+              break
+        else:
+              print("Invalid report type. Please select report, profit, or exit.")
 
-        if choice == "admin":
-            password = input("Enter admin password: ")
-            if password == coffee_machine.admin_password:
-                coffee_machine.admin_mode()
-            else:
-                print("Incorrect password. Access denied.")
-            continue
+is_on = True
 
-        if choice not in coffee_machine.menu:
-            print("Invalid choice. Please select espresso, latte, or cappuccino.")
-            continue
+while is_on:
+    choice = input("What would you like? (espresso/latte/cappuccino/admin/off): ").lower()
 
-        drink = coffee_machine.menu[choice]
+    if choice == "off":
+        is_on = False
+        print("Turning off. Goodbye!")
+        break
 
-        if coffee_machine.is_resource_sufficient(drink["ingredients"]):
-            payment = coffee_machine.coin_counter()
-            if coffee_machine.is_transaction_successful(payment, drink["cost"]):
-                coffee_machine.make_coffee(choice, drink["ingredients"])
+    if choice == "admin":
+        if not ADMIN_MODE:
+          if enter_admin_mode():
+             admin_report()
+        else:
+           exit_admin_mode()
+        continue  # Skip to the next loop iteration
+
+    if choice not in MENU:
+        print("Invalid choice. Please select espresso, latte, cappuccino, admin, or off.")
+        continue
+
+    drink = MENU[choice]
+
+    if is_resource_sufficient(drink["ingredients"], choice):
+      payment = coin_counter()
+      if is_transaction_successful(payment, drink["cost"]):
+          make_coffee(choice, drink["ingredients"])
+    if choice not in MENU:
+        print("Invalid choice. Please select espresso, latte, cappuccino, report, or off.")
+        continue
+
+    drink = MENU[choice]
+
+    if is_resource_sufficient(drink["ingredients"], choice):
+      payment = coin_counter()
+      if is_transaction_successful(payment, drink["cost"]):
+          make_coffee(choice, drink["ingredients"])
 
