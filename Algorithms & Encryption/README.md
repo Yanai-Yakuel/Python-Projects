@@ -1,19 +1,20 @@
-# Algorithms & Encryption
+Algorithms & Encryption
+This folder contains Python projects related to various algorithms and encryption techniques. Each project demonstrates different computational concepts.
 
-This folder contains Python projects related to various algorithms and encryption techniques. Each project demonstrates different concepts, such as number guessing algorithms and basic encryption methods.
+Projects
+1. Average Calculation (average.py)
+Computes the arithmetic mean of a given list of numbers.
 
-## Projects:
+2. Median Calculation (median.py)
+Determines the median value from a given list of numbers.
 
-### 1. **Number Guessing Algorithm**
-This project implements a simple number guessing game where the user tries to guess a randomly generated number. The game provides feedback on whether the guess is too high or too low.
+3. Average & Median (average_median.py)
+Computes both the mean and median of a dataset in a single execution.
 
-- **File**: [number_guessing_project.py](number_guessing_project.py)
+4. Number Guessing Game (number_guessing_project.py)
+A simple game where the user attempts to guess a randomly generated number with feedback on each guess.
 
-### 2. **Sentence Encryption**
-This project demonstrates a basic encryption technique where a sentence is encrypted and decrypted using a simple algorithm.
+5. Sentence Encryption (sentence_encryption_project.py)
+Encrypts text using a basic encryption method.
 
-- **File**: [sentence_encryption_project.py](sentence_encryption_project.py)
 
----
-
-*Each project contains a Python file that implements the respective algorithm or encryption method.*
