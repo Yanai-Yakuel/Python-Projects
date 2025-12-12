@@ -1,143 +1,132 @@
 import cv2
 import numpy as np
 
-# Temporal smoothing variables
-prev_center = None
-prev_radius = None
-smoothing_factor = 0.4  # Reduced for less lag, more responsiveness
+class BallDetector:
+    def __init__(self, debug=False):
+        self.prev_center = None
+        self.prev_radius = None
+        self.smoothing_factor = 0.4
+        self.debug = debug
+        # CLAHE setup for better contrast in changing light
+        self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-def runPipeline(image):
-    global prev_center, prev_radius
-    
-    # 1. Convert to Grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # 2. Gaussian Blur
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # 3. Adaptive Thresholding - creates high contrast edges
-    # Larger block size helps with distant objects
-    thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                   cv2.THRESH_BINARY_INV, 15, 2)
-    
-    # 4. Moderate Morphological Closing - fill small gaps but keep shape
-    kernel = np.ones((5, 5), np.uint8)
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
-    
-    # 5. Blur the binary image slightly for Hough
-    closed_blurred = cv2.GaussianBlur(closed, (9, 9), 2)
-    
-    # 6. Hough Circle Transform on the processed image
-    rows = closed_blurred.shape[0]
-    circles = cv2.HoughCircles(closed_blurred, cv2.HOUGH_GRADIENT, dp=1, minDist=rows/8,
-                               param1=50, param2=26,  # Higher threshold for stability
-                               minRadius=8, maxRadius=200)
-    
-    ball_center = None
-    ball_radius = None
-    
-    output_image = image.copy()
+    def reset_tracking(self):
+        self.prev_center = None
+        self.prev_radius = None
 
-    if circles is not None:
-        # Filter circles if we have previous detection
-        if prev_center is not None:
-            # Find circle closest to previous position
-            valid_circles = []
-            for circle in circles[0, :]:
-                cx, cy, r = circle
-                dist = np.sqrt((cx - prev_center[0])**2 + (cy - prev_center[1])**2)
-                # Only consider circles within reasonable distance from previous
-                if dist < 80:  # Tighter filter to prevent jumping (was 100)
-                    valid_circles.append(circle)
+    def process_frame(self, image):
+        # 1. Convert to Grayscale & Enhance Contrast
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray_enhanced = self.clahe.apply(gray) # Better response to shadows
+        
+        # 2. Gaussian Blur to reduce noise
+        blurred = cv2.GaussianBlur(gray_enhanced, (9, 9), 2)
+        
+        # 3. Hough Circles
+        rows = blurred.shape[0]
+        # param1: Higher threshold for Canny edge detection
+        # param2: Accumulator threshold for circle centers (smaller = more false circles)
+        circles = cv2.HoughCircles(
+            blurred, 
+            cv2.HOUGH_GRADIENT, 
+            dp=1, 
+            minDist=rows/4,
+            param1=100, 
+            param2=30,
+            minRadius=20, 
+            maxRadius=200
+        )
+        
+        output_image = image.copy()
+        current_center = None
+        current_radius = None
+        
+        if circles is not None:
+            circles = np.uint16(np.around(circles))
+            candidates = []
             
-            if valid_circles:
-                # Choose largest valid circle
-                largest_circle = max(valid_circles, key=lambda c: c[2])
-            else:
-                # No valid circles near previous, take largest overall
-                largest_circle = max(circles[0, :], key=lambda c: c[2])
-        else:
-            # No previous detection, just take largest
-            largest_circle = max(circles[0, :], key=lambda c: c[2])
-        
-        circles = np.uint16(np.around(circles))
-        center = (int(largest_circle[0]), int(largest_circle[1]))
-        radius = int(largest_circle[2])
-        
-        # === QUALITY CHECKS - Validate this is actually a ball ===
-        is_valid_ball = True
-        
-        # Check 1: Reasonable size (not too small, not too big)
-        # Raised minimum to 10 for stricter filtering
-        if radius < 10 or radius > 150:
-            is_valid_ball = False
-        
-        # Check 2: Verify circularity by checking the actual contour
-        if is_valid_ball:
-            # Create a mask of the detected circle region
-            mask = np.zeros(closed.shape, dtype=np.uint8)
-            cv2.circle(mask, center, radius, 255, -1)
-            
-            # Find contours in the masked region
-            masked_region = cv2.bitwise_and(closed, closed, mask=mask)
-            contours, _ = cv2.findContours(masked_region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            if contours:
-                # Get the largest contour in this region
-                largest_contour = max(contours, key=cv2.contourArea)
-                area = cv2.contourArea(largest_contour)
-                perimeter = cv2.arcLength(largest_contour, True)
+            # Filter and Score Candidates
+            for c in circles[0, :]:
+                cx, cy, r = c
                 
-                if perimeter > 0:
-                    # Calculate circularity: 4π * area / perimeter²
-                    # Perfect circle = 1.0, stricter threshold for better filtering
-                    circularity = 4 * np.pi * area / (perimeter * perimeter)
+                # Basic sanity check
+                if r < 10 or r > 200: 
+                    continue
                     
-                    if circularity < 0.65:  # Stricter - must be quite round
-                        is_valid_ball = False
+                score = 0
+                
+                # Tracking Logic
+                if self.prev_center is not None:
+                    # Distance from previous frame
+                    dist = np.sqrt((cx - self.prev_center[0])**2 + (cy - self.prev_center[1])**2)
+                    size_diff = abs(int(r) - int(self.prev_radius))
                     
-                    # Check 3: Area should be reasonable compared to circle area
-                    expected_area = np.pi * radius * radius
-                    area_ratio = area / expected_area if expected_area > 0 else 0
+                    # Weight distance heavily
+                    score = dist + (size_diff * 3)
                     
-                    if area_ratio < 0.5:  # Too little fill
-                        is_valid_ball = False
-        
-        # Only accept detection if it passes all quality checks
-        if is_valid_ball:
-            # Temporal smoothing - blend with previous detection
-            if prev_center is not None and prev_radius is not None:
-                center = (
-                    int(smoothing_factor * prev_center[0] + (1 - smoothing_factor) * center[0]),
-                    int(smoothing_factor * prev_center[1] + (1 - smoothing_factor) * center[1])
-                )
-                radius = int(smoothing_factor * prev_radius + (1 - smoothing_factor) * radius)
+                    # Gate: If too far or size changed drastically, penalize heavily
+                    if dist > 100 or size_diff > 50:
+                        score += 1000 
+                else:
+                    # If not tracking, prefer larger circles (assuming ball is prominent)
+                    score = 1000 - r 
+                
+                candidates.append((score, c))
             
-            ball_center = center
-            ball_radius = radius
-            
-            # Update previous values
-            prev_center = center
-            prev_radius = radius
-            
-            # Draw on the output image
-            cv2.circle(output_image, center, radius, (0, 255, 0), 3)  # Green circle
-            cv2.circle(output_image, center, 2, (0, 255, 255), -1)    # Yellow center
+            # Pick best candidate
+            if candidates:
+                candidates.sort(key=lambda x: x[0]) # Lowest score is best
+                best_circle = candidates[0][1]
+                
+                # Unwrap
+                target_center = (best_circle[0], best_circle[1])
+                target_radius = best_circle[2]
+                
+                # Implement Temporal Smoothing
+                if self.prev_center is not None:
+                     # Calculate distance again for specific check
+                    dist = np.sqrt((target_center[0] - self.prev_center[0])**2 + 
+                                 (target_center[1] - self.prev_center[1])**2)
+                    
+                    if dist < 120: # Valid movement range
+                        target_center = (
+                            int(self.smoothing_factor * self.prev_center[0] + (1 - self.smoothing_factor) * target_center[0]),
+                            int(self.smoothing_factor * self.prev_center[1] + (1 - self.smoothing_factor) * target_center[1])
+                        )
+                        target_radius = int(self.smoothing_factor * self.prev_radius + (1 - self.smoothing_factor) * target_radius)
+                    else:
+                        # Reset if jumped too far (teleportation is physically impossible)
+                        self.reset_tracking()
+
+                current_center = target_center
+                current_radius = target_radius
+                
+                self.prev_center = current_center
+                self.prev_radius = current_radius
+
+                # Visualization
+                cv2.circle(output_image, current_center, current_radius, (0, 255, 0), 3)
+                cv2.circle(output_image, current_center, 2, (0, 255, 255), -1)
+            else:
+                self.reset_tracking()
         else:
-            # Invalid detection - reset tracking
-            prev_center = None
-            prev_radius = None
+            self.reset_tracking()
 
-    contours_return = [] 
-    llpython = [0] * 8
-    
-    if ball_center is not None:
-        llpython[0] = ball_center[0]
-        llpython[1] = ball_center[1]
-        llpython[2] = ball_radius
+        # Prepare Limelight Data
+        llpython = [0.0] * 8
+        if current_center is not None:
+            llpython[0] = float(current_center[0])
+            llpython[1] = float(current_center[1])
+            llpython[2] = float(current_radius)
 
-    return contours_return, output_image, llpython
+        return [], output_image, llpython
 
+# --- Wrapper for Limelight (Pipeline Interface) ---
+detector = BallDetector()
+
+def runPipeline(image, llrobot=None):
+    # Support both signatures (with and without llrobot data)
+    return detector.process_frame(image)
 
 # --- MAIN LOOP ---
 if __name__ == "__main__":
@@ -161,6 +150,10 @@ if __name__ == "__main__":
         contours, output_image, llpython = runPipeline(frame)
 
         cv2.imshow("Limelight Output", output_image)
+        
+        # Print detected info to console
+        if llpython[0] != 0:
+            print(f"Detected: x={llpython[0]:.1f}, y={llpython[1]:.1f}, r={llpython[2]:.1f}")
 
         if cv2.waitKey(1) & 0xFF == ord('x'):
             break
