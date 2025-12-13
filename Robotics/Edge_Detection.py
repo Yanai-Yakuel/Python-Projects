@@ -5,8 +5,11 @@ class BallDetector:
     def __init__(self, debug=False):
         self.prev_center = None
         self.prev_radius = None
-        self.smoothing_factor = 0.4
+        self.prev_velocity = (0, 0)  # Track velocity for prediction
+        self.smoothing_factor = 0.75  # Balanced smoothing
         self.debug = debug
+        self.frame_count = 0
+        self.lost_frames = 0
         # CLAHE setup for better contrast in changing light
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
@@ -15,26 +18,52 @@ class BallDetector:
         self.prev_radius = None
 
     def process_frame(self, image):
-        # 1. Convert to Grayscale & Enhance Contrast
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray_enhanced = self.clahe.apply(gray) # Better response to shadows
+        self.frame_count += 1
         
-        # 2. Gaussian Blur to reduce noise
+        # 1. Convert to Grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # 2. CLAHE for better contrast in close-up and varying lighting
+        gray_enhanced = self.clahe.apply(gray)
+        
+        # 3. Gaussian Blur to reduce noise
         blurred = cv2.GaussianBlur(gray_enhanced, (9, 9), 2)
         
-        # 3. Hough Circles
+        # 3b. Morphological operations to remove wall texture noise
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        blurred = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, kernel)  # Fill small holes in ball
+        blurred = cv2.morphologyEx(blurred, cv2.MORPH_OPEN, kernel)   # Remove small wall noise
+        
+        # 4. Adaptive Hough Circles - parameters adapt based on tracking state
         rows = blurred.shape[0]
-        # param1: Higher threshold for Canny edge detection
-        # param2: Accumulator threshold for circle centers (smaller = more false circles)
+        
+        # When we have no previous radius, we don't know ball size, so be more lenient
+        # When we know the ball size, use stricter parameters
+        if self.prev_center is None:
+            # Initialization mode: look for circles broadly - any size
+            param1_threshold = 95  # Lower edge threshold to catch balls at any distance
+            param2_threshold = 25   # Moderate accumulator threshold
+            min_radius = 10  # Allow very small circles (distant ball)
+            max_radius = 200  # Allow large circles
+        else:
+            # Tracking mode: use radius to adapt detection
+            expected_radius = self.prev_radius
+            # Tighter parameters when tracking
+            param1_threshold = 110
+            param2_threshold = 32
+            # Expand search range based on expected size (allow size changes up to 2x for zoom in/out)
+            min_radius = max(8, int(expected_radius * 0.4))
+            max_radius = min(200, int(expected_radius * 2.5))
+        
         circles = cv2.HoughCircles(
             blurred, 
             cv2.HOUGH_GRADIENT, 
             dp=1, 
-            minDist=rows/4,
-            param1=100, 
-            param2=30,
-            minRadius=20, 
-            maxRadius=200
+            minDist=max(rows//6, 50),
+            param1=param1_threshold,
+            param2=param2_threshold,
+            minRadius=min_radius, 
+            maxRadius=max_radius
         )
         
         output_image = image.copy()
@@ -49,68 +78,79 @@ class BallDetector:
             for c in circles[0, :]:
                 cx, cy, r = c
                 
-                # Basic sanity check
-                if r < 10 or r > 200: 
+                # Sanity checks
+                if r < 12 or r > 180: 
+                    continue
+                
+                # Boundary check: ball should be mostly visible
+                if cx - r < 5 or cy - r < 5 or cx + r >= image.shape[1] - 5 or cy + r >= image.shape[0] - 5:
                     continue
                     
-                score = 0
+                score = float('inf')
                 
-                # Tracking Logic
+                # Scoring based on tracking state - prefer stability and reject hand
                 if self.prev_center is not None:
-                    # Distance from previous frame
                     dist = np.sqrt((cx - self.prev_center[0])**2 + (cy - self.prev_center[1])**2)
                     size_diff = abs(int(r) - int(self.prev_radius))
                     
-                    # Weight distance heavily
-                    score = dist + (size_diff * 3)
+                    # VERY STRICT: Keep lock on ball, don't jump around
+                    # Limit distance and size change strictly
+                    if dist > 60 or size_diff > 15:
+                        continue  # Hard reject - likely noise or hand
                     
-                    # Gate: If too far or size changed drastically, penalize heavily
-                    if dist > 100 or size_diff > 50:
-                        score += 1000 
+                    # Score: prefer closest match to previous position (tight lock)
+                    score = dist * 3 + size_diff * 5
                 else:
-                    # If not tracking, prefer larger circles (assuming ball is prominent)
-                    score = 1000 - r 
+                    # When initializing, prefer centered circles only
+                    # Don't care about size, just find a circle near center
+                    center_x, center_y = image.shape[1] // 2, image.shape[0] // 2
+                    center_dist = np.sqrt((cx - center_x)**2 + (cy - center_y)**2)
+                    # Simple scoring: prefer centered circles, ignore size
+                    score = center_dist
                 
                 candidates.append((score, c))
             
             # Pick best candidate
             if candidates:
-                candidates.sort(key=lambda x: x[0]) # Lowest score is best
+                candidates.sort(key=lambda x: x[0])
                 best_circle = candidates[0][1]
                 
-                # Unwrap
-                target_center = (best_circle[0], best_circle[1])
-                target_radius = best_circle[2]
+                target_center = (int(best_circle[0]), int(best_circle[1]))
+                target_radius = int(best_circle[2])
                 
-                # Implement Temporal Smoothing
+                # Temporal smoothing - smooth but still responsive
                 if self.prev_center is not None:
-                     # Calculate distance again for specific check
-                    dist = np.sqrt((target_center[0] - self.prev_center[0])**2 + 
-                                 (target_center[1] - self.prev_center[1])**2)
+                    # Calculate velocity
+                    vx = target_center[0] - self.prev_center[0]
+                    vy = target_center[1] - self.prev_center[1]
                     
-                    if dist < 120: # Valid movement range
-                        target_center = (
-                            int(self.smoothing_factor * self.prev_center[0] + (1 - self.smoothing_factor) * target_center[0]),
-                            int(self.smoothing_factor * self.prev_center[1] + (1 - self.smoothing_factor) * target_center[1])
-                        )
-                        target_radius = int(self.smoothing_factor * self.prev_radius + (1 - self.smoothing_factor) * target_radius)
-                    else:
-                        # Reset if jumped too far (teleportation is physically impossible)
-                        self.reset_tracking()
+                    # Apply low-pass filter for smooth motion
+                    target_center = (
+                        int(self.smoothing_factor * self.prev_center[0] + (1 - self.smoothing_factor) * target_center[0]),
+                        int(self.smoothing_factor * self.prev_center[1] + (1 - self.smoothing_factor) * target_center[1])
+                    )
+                    target_radius = int(self.smoothing_factor * self.prev_radius + (1 - self.smoothing_factor) * target_radius)
+                    
+                    self.prev_velocity = (vx, vy)
 
                 current_center = target_center
                 current_radius = target_radius
                 
                 self.prev_center = current_center
                 self.prev_radius = current_radius
+                self.lost_frames = 0
 
                 # Visualization
                 cv2.circle(output_image, current_center, current_radius, (0, 255, 0), 3)
                 cv2.circle(output_image, current_center, 2, (0, 255, 255), -1)
             else:
-                self.reset_tracking()
+                self.lost_frames += 1
+                if self.lost_frames > 20:
+                    self.reset_tracking()
         else:
-            self.reset_tracking()
+            self.lost_frames += 1
+            if self.lost_frames > 20:
+                self.reset_tracking()
 
         # Prepare Limelight Data
         llpython = [0.0] * 8
