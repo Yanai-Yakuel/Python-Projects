@@ -2,16 +2,6 @@ import random
 
 # Constants
 CARDS = [11, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 10]
-LOGO = """
-.------.            _     _            _    _            _    
-|A_  _ |.          | |   | |          | |  (_)          | |   
-|( \/ ).-----.     | |__ | | __ _  ___| | ___  __ _  ___| | __
-| \  /|K /\  |     | '_ \| |/ _` |/ __| |/ / |/ _` |/ __| |/ /
-|  \/ | /  \ |     | |_) | | (_| | (__|   <| | (_| | (__|   < 
-`-----| \  / |     |_.__/|_|\__,_|\___|_|\_\ |\__,_|\___|_|\_\
-      |  \/ K|                            _/ |                
-      `------'                           |__/           
-"""
 
 # Functions
 def deal_card():
@@ -45,8 +35,6 @@ def compare(u_score, c_score):
         return "You lose!"
 
 def play_game():
-    """Runs a single game of Blackjack."""
-    print(LOGO)
     print("Welcome to Blackjack! Try to beat the dealer without exceeding 21.\n")
     
     user_cards = [deal_card() for _ in range(2)]
