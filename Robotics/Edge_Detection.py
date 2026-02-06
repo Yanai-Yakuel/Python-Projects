@@ -6,31 +6,26 @@ class BallDetector:
     def __init__(self, debug=False):
         self.prev_center = None
         self.prev_radius = None
-        self.prev_velocity = (0, 0)  # Track velocity for prediction
-        self.smoothing_factor = 0.75  # Balanced smoothing
+        self.prev_velocity = (0, 0)
+        self.smoothing_factor = 0.75 
         self.debug = debug
         self.frame_count = 0
         self.lost_frames = 0
 
-        # CLAHE setup for better contrast in changing light
         self.clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
-        # FTC 2026 - סלחנות מקסימלית לרעש מעל הכדור
-        self.arc_fraction_thresh_min = 0.10   # 10% היקף מספיק!
-        self.arc_fraction_half = 0.45
+        self.arc_fraction_thresh_min = 0.10   
         self.arc_fraction_full = 0.7
-        self.occlusion_grace_frames = 12      # 12 פריימים נעילה
+        self.occlusion_grace_frames = 12   
 
     def reset_tracking(self):
         self.prev_center = None
         self.prev_radius = None
 
-    # **שדרוג קריטי: מתעלם מרעש בחלק העליון של הכדור!**
     def _circle_edge_fraction(self, gray_img, center, radius, samples=90):
         cx, cy = center
         h, w = gray_img.shape[:2]
 
-        # Canny סלחני יותר לזירה FTC
         edges = cv2.Canny(gray_img, 60, 140)
 
         hits = 0
@@ -44,12 +39,11 @@ class BallDetector:
             if x <= 2 or x >= w - 3 or y <= 2 or y >= h - 3:
                 continue
 
-            # **הפתרון לרעש מעל הכדור: מתעלמים מ-30% העליון!**
-            if y < cy - radius * 0.3:  # דלג על חלק עליון (רעש!)
+            if y < cy - radius * 0.3:  
                 continue
 
             total += 1
-            roi = edges[y-2:y+4, x-2:x+4]  # ROI גדול יותר לקצוות
+            roi = edges[y-2:y+4, x-2:x+4]  
             if np.any(roi > 0):
                 hits += 1
 
@@ -61,21 +55,16 @@ class BallDetector:
     def process_frame(self, image):
         self.frame_count += 1
         
-        # 1. Convert to Grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # 2. CLAHE for better contrast in changing light
         gray_enhanced = self.clahe.apply(gray)
         
-        # 3. Gaussian Blur to reduce noise
         blurred = cv2.GaussianBlur(gray_enhanced, (9, 9), 2)
         
-        # 3b. Morphological operations to remove wall texture noise
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         blurred = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, kernel)
         blurred = cv2.morphologyEx(blurred, cv2.MORPH_OPEN, kernel)
 
-        # 4. Adaptive Hough Circles
         rows = blurred.shape[0]
         
         if self.prev_center is None:
@@ -145,15 +134,13 @@ class BallDetector:
 
                 current_arc_fraction = self._circle_edge_fraction(blurred, target_center, target_radius)
 
-                # **לוגיקה משופרת לרעש מעל הכדור**
                 if current_arc_fraction < self.arc_fraction_thresh_min:
-                    # כיסוי/רעש מעל - נשארים נעולים!
                     if self.prev_center is not None:
                         self.lost_frames += 1
                         if self.lost_frames <= self.occlusion_grace_frames:
                             current_center = self.prev_center
                             current_radius = self.prev_radius
-                            color = (255, 0, 255)  # סגול = נעול למרות רעש
+                            color = (255, 0, 255)  
                             cv2.circle(output_image, current_center, current_radius, color, 3)
                             cv2.circle(output_image, current_center, 2, (255, 0, 255), -1)
                         else:
@@ -163,7 +150,6 @@ class BallDetector:
                         if self.lost_frames > 20:
                             self.reset_tracking()
                 else:
-                    # זיהוי טוב - smoothing
                     self.lost_frames = 0
 
                     if self.prev_center is not None:
@@ -188,7 +174,6 @@ class BallDetector:
                     self.prev_center = current_center
                     self.prev_radius = current_radius
 
-                    # Visualization
                     if current_arc_fraction >= self.arc_fraction_full:
                         color = (0, 255, 0)
                     elif current_arc_fraction >= self.arc_fraction_half:
@@ -214,19 +199,16 @@ class BallDetector:
             if self.lost_frames > 20:
                 self.reset_tracking()
 
-        # Prepare Limelight Data
         llpython = [0.0] * 8
         if current_center is not None:
             llpython[0] = float(current_center[0])
             llpython[1] = float(current_center[1])
             llpython[2] = float(current_radius)
             llpython[3] = float(current_arc_fraction)
-            llpython[4] = float(self.lost_frames)  # מצב כיסוי
-
+            llpython[4] = float(self.lost_frames)  
         return [], output_image, llpython
 
 
-# --- Wrapper for Limelight (Pipeline Interface) ---
 detector = BallDetector(debug=True)
 
 
@@ -234,7 +216,6 @@ def runPipeline(image, llrobot=None):
     return detector.process_frame(image)
 
 
-# --- MAIN LOOP ---
 if __name__ == "__main__":
     limelight_url = "http://limelight.local:5800/stream.mjpg"
     cap = cv2.VideoCapture(limelight_url)
