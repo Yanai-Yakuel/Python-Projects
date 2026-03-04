@@ -64,7 +64,8 @@ def main():
         print(f"\nScore {score_for_stock}/4")
         if score_for_stock > 2:
             print("Buy stock!")
-        elif score_for_stock   
+        elif score_for_stock  == 2:
+            print("hold")
         else:
             print("Sell stock")
         
