@@ -2,7 +2,7 @@ import yfinance
 import matplotlib.pyplot as plt
 
 def main():
-    symbol = input("Enter stock symbol (e.g., AAPL): ").upper()
+    symbol = input("Enter stock symbol (like AAPL): ").upper()
     stock = yfinance.Ticker(symbol)
 
     info = stock.info  
@@ -23,8 +23,11 @@ def main():
     print(f"Forward P/E: {info.get('forwardPE')}")
     print(f"Current Ratio: {info.get('currentRatio')}")
     print(f"Debt to Equity: {info.get('debtToEquity')}")
-    print(f"Average daily change: {data['Daily Change %'].mean():.2f}%")
+    data['Daily Change %'] = data['Close'].pct_change() * 100
 
+    if data.empty:
+        print("No historical data available for this symbol")
+        return
 
 
 
@@ -37,6 +40,15 @@ def main():
     plt.ylabel('Price')
     plt.legend()
     plt.grid(True)
-    plt.show()
+    plt.show(block=True)
+
+    
+
+
 
 main()
+
+def c
+
+
+
