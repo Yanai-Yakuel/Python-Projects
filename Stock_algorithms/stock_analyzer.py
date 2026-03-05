@@ -71,7 +71,7 @@ def main():
     print(f"Debt to Equity: {Debt_to_Equity}")
 
     data['Daily Change %'] = data['Close'].pct_change() * 100
-######################
+############PRAPH ############################
     plt.figure(figsize=(10, 5))
     plt.plot(data['Close'], label='Close Price', color='blue')
     plt.plot(data['MA20'], label='MA 20', color='green')
