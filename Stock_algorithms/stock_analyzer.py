@@ -41,7 +41,7 @@ def main():
         data = stock.history(period="1y", timeout=30)
     except Exception as e:
         print("no data found")
-        return
+        return3
 
     if data.empty:
         print("No data available")
